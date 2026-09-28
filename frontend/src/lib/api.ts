@@ -14,6 +14,7 @@ import axios, {
   AxiosRequestConfig,
   InternalAxiosRequestConfig,
 } from 'axios';
+import { demoAdapter } from './demo/adapter';
 
 export interface ApiFieldError {
   field: string;
@@ -64,6 +65,46 @@ export class ApiError extends Error {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
+/**
+ * Demo mode.
+ *
+ * A static deployment (Vercel, Netlify, GitHub Pages) cannot host the NestJS API
+ * with PostgreSQL, Redis and BullMQ. Unless demo mode is explicitly disabled, the
+ * client probes the API once; if it is unreachable the in-browser demo adapter
+ * takes over, so every screen — including sign-in — works with no visible errors.
+ *
+ * Set `VITE_DEMO_MODE=false` to force the real API only.
+ */
+type DemoMode = 'unknown' | 'live' | 'demo';
+
+const DEMO_SETTING = String(import.meta.env.VITE_DEMO_MODE ?? 'auto').toLowerCase();
+let demoMode: DemoMode = DEMO_SETTING === 'true' ? 'demo' : DEMO_SETTING === 'false' ? 'live' : 'unknown';
+
+export const isDemoMode = (): boolean => demoMode === 'demo';
+export const demoModeState = (): DemoMode => demoMode;
+export const setDemoMode = (mode: DemoMode): void => {
+  demoMode = mode;
+};
+
+/** Probe the API once and cache the outcome. */
+export const detectApiMode = async (): Promise<DemoMode> => {
+  if (demoMode !== 'unknown') return demoMode;
+  if (DEMO_SETTING === 'true') return demoMode;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3_500);
+    const response = await fetch(`${API_BASE_URL}/health`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const body = (await response.json().catch(() => null)) as { data?: { checks?: { database?: string } } } | null;
+    const healthy = response.ok && body?.data?.checks?.database === 'up';
+    demoMode = healthy ? 'live' : 'demo';
+  } catch {
+    demoMode = 'demo';
+  }
+  return demoMode;
+};
+
+
 /** In-memory access token — never persisted to localStorage (NFR-SEC-05). */
 let accessToken: string | null = null;
 let onSessionExpired: (() => void) | null = null;
@@ -88,6 +129,10 @@ export const http: AxiosInstance = axios.create({
 http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (accessToken && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+  // In demo mode every request is served from the in-browser dataset.
+  if (demoMode === 'demo') {
+    config.adapter = demoAdapter;
   }
   return config;
 });
@@ -178,7 +223,6 @@ export const api = {
     const response = await http.get(url, { params, ...options });
     return unwrap<T>(response.data);
   },
-
   async post<T>(url: string, body?: unknown, options?: RequestOptions): Promise<T> {
     const headers: Record<string, string> = {};
     if (options?.ifMatch !== undefined) headers['If-Match'] = String(options.ifMatch);

@@ -18,13 +18,13 @@ import { Button, Card, Checkbox, Field, Input, PasswordInput, cn } from '@/compo
 
 const DEMO_PASSWORD = 'Anwar@KPI2026';
 
-const DEMO_ACCOUNTS: Array<{ label: string; email: string }> = [
-  { label: 'Super Admin', email: 'superadmin@anwargroup.net' },
-  { label: 'HR Admin', email: 'hradmin@anwargroup.net' },
-  { label: 'Department Head', email: 'kamrul.hasan@anwargroup.net' },
-  { label: 'Employee', email: 'rafi.ahmed@anwargroup.net' },
-  { label: 'Management Viewer', email: 'management.viewer@anwargroup.net' },
-  { label: 'System Admin', email: 'sysadmin@anwargroup.net' },
+const DEMO_ACCOUNTS: Array<{ label: string; email: string; hint: string }> = [
+  { label: 'Employee', email: 'rafi.ahmed@anwargroup.net', hint: 'My KPI · Performance Summary' },
+  { label: 'Department Head', email: 'kamrul.hasan@anwargroup.net', hint: 'Dashboard · Pending Requests' },
+  { label: 'Super Admin', email: 'superadmin@anwargroup.net', hint: 'Group Dashboard · All Requests' },
+  { label: 'HR Admin', email: 'hradmin@anwargroup.net', hint: 'Users · Organisation · Reports' },
+  { label: 'Management Viewer', email: 'management.viewer@anwargroup.net', hint: 'Group Dashboard (read-only)' },
+  { label: 'System Admin', email: 'sysadmin@anwargroup.net', hint: 'System Health' },
 ];
 
 /**
@@ -76,7 +76,7 @@ export const AuthShell: React.FC<{ children: React.ReactNode; maxWidth?: string 
 );
 
 const LoginPage: React.FC = () => {
-  const { login, home } = useAuth();
+  const { login, home , quickSignIn } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const [searchParams] = useSearchParams();
@@ -97,6 +97,29 @@ const LoginPage: React.FC = () => {
     setEmail(account.email);
     setPassword(DEMO_PASSWORD);
     setApiError(null);
+  };
+
+  /**
+   * One-click sign-in. Signs in with the seeded password and routes straight to
+   * the role home screen — no typing, and no error surface.
+   */
+  const signInAs = async (account: { email: string; label: string }) => {
+    if (submitting) return;
+    setApiError(null);
+    setSubmitting(true);
+    setEmail(account.email);
+    setPassword(DEMO_PASSWORD);
+    try {
+      const result = await quickSignIn(account.email, DEMO_PASSWORD);
+      toast.success(`Signed in as ${account.label}`, 'Opening your workspace.');
+      navigate(result.home || home, { replace: true });
+    } catch (error) {
+      const next = error instanceof ApiError ? error : new ApiError(0, undefined, 'Sign-in failed. Please try again.');
+      setApiError(next);
+      toast.error('Could not sign you in', next.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -123,6 +146,15 @@ const LoginPage: React.FC = () => {
     }
   };
 
+  /**
+   * On a front-end-only deployment (for example Vercel without an API host) the
+   * sign-in call returns 404/5xx. Explain that instead of showing a bare "page not
+   * found" so the live URL reads as intentional and points at the working stack.
+   */
+  const apiUnreachable =
+    apiError !== null &&
+    (apiError.status === 404 || apiError.status === 0 || apiError.status >= 500);
+
   return (
     <AuthShell>
       <Card className="shadow-raised">
@@ -143,9 +175,22 @@ const LoginPage: React.FC = () => {
           <Alert
             tone={locked ? 'warning' : 'danger'}
             className="mt-4"
-            title={locked ? 'Account temporarily locked' : undefined}
+            title={locked ? 'Account temporarily locked' : apiUnreachable ? 'API not reachable from this deployment' : undefined}
           >
-            {apiError.message}
+            {apiUnreachable ? (
+              <>
+                This is the front-end build only. The NestJS API, PostgreSQL, Redis and the BullMQ
+                workers must be hosted separately, then the <code className="anwar-mono">/api</code> rewrite in{' '}
+                <code className="anwar-mono">vercel.json</code> points at that origin.
+                {' '}
+                <a href="/launcher.html" className="font-semibold underline">
+                  Open the launcher &amp; deployment notes
+                </a>
+                .
+              </>
+            ) : (
+              apiError.message
+            )}
           </Alert>
         ) : null}
 
@@ -200,24 +245,26 @@ const LoginPage: React.FC = () => {
           </Link>
         </p>
 
-        <details className="mt-5 rounded-control border border-edge bg-canvas">
-          <summary className="cursor-pointer px-3 py-2 text-caption font-medium text-ink-secondary hover:text-navy-900">
-            Demo accounts
+        <details className="mt-5 rounded-control border border-edge bg-canvas" open>
+          <summary className="cursor-pointer px-3 py-2 text-caption font-semibold text-navy-900 hover:text-navy-700">
+            Sign in with one click
           </summary>
-          <div className="border-t border-edge p-1.5">
-            <p className="px-2 py-1 text-[11px] text-ink-muted">
-              Password for every demo account: <span className="anwar-mono">{DEMO_PASSWORD}</span>
+          <div className="border-t border-edge p-2">
+            <p className="px-1 pb-2 text-[11px] text-ink-muted">
+              Choose a role to open the platform immediately — no password needed. The shared password is{' '}
+              <span className="anwar-mono">Anwar@KPI2026</span> if you prefer the form.
             </p>
-            <ul className="space-y-0.5">
+            <ul className="grid gap-1.5 sm:grid-cols-2">
               {DEMO_ACCOUNTS.map((account) => (
                 <li key={account.email}>
                   <button
                     type="button"
-                    onClick={() => fillDemoAccount(account)}
-                    className="flex w-full flex-wrap items-center justify-between gap-1 rounded-control px-2 py-1.5 text-left hover:bg-navy-50"
+                    onClick={() => void signInAs(account)}
+                    disabled={submitting}
+                    className="flex w-full flex-col items-start rounded-control border border-edge bg-surface px-2.5 py-2 text-left transition-colors hover:border-navy-600 hover:bg-navy-50 disabled:opacity-60"
                   >
-                    <span className="text-caption font-medium text-ink">{account.label}</span>
-                    <span className="truncate text-[11px] text-ink-secondary">{account.email}</span>
+                    <span className="text-caption font-semibold text-navy-900">{account.label}</span>
+                    <span className="mt-0.5 line-clamp-1 text-[11px] text-ink-secondary">{account.hint}</span>
                   </button>
                 </li>
               ))}

@@ -87,7 +87,7 @@ interface QueueCounts {
 }
 
 export const AppShell: React.FC = () => {
-  const { user, profile, logout } = useAuth();
+  const { user, profile, logout, demo } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const toast = useToast();
@@ -136,6 +136,13 @@ export const AppShell: React.FC = () => {
     await logout();
     queryClient.clear();
     toast.info('Signed out', 'Your session has been closed.');
+    navigate('/login', { replace: true });
+  };
+
+  /** Returns to the sign-in screen so another demo role can be explored. */
+  const handleSwitchRole = async () => {
+    await logout();
+    queryClient.clear();
     navigate('/login', { replace: true });
   };
 
@@ -310,6 +317,16 @@ export const AppShell: React.FC = () => {
                     <Link to="/notifications" className="block rounded-control px-3 py-2 text-body text-ink hover:bg-navy-50" role="menuitem">
                       Notifications
                     </Link>
+                    {demo ? (
+                      <button
+                        type="button"
+                        onClick={handleSwitchRole}
+                        className="block w-full rounded-control px-3 py-2 text-left text-body text-navy-700 hover:bg-navy-50"
+                        role="menuitem"
+                      >
+                        Switch demo role
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={handleLogout}
@@ -324,6 +341,14 @@ export const AppShell: React.FC = () => {
             </div>
           </div>
         </header>
+
+        {demo ? (
+          <div className="border-b border-info/30 bg-info-tint px-4 py-2 text-caption text-info sm:px-6">
+            <strong>Demo mode</strong> — this deployment runs entirely in your browser on the seeded Anwar Group
+            dataset (9 business units, 104 departments, 402 KPIs). Use “Switch demo role” in the profile menu to
+            explore another role.
+          </div>
+        ) : null}
 
         {!user?.organisationConfirmed ? (
           <div className="border-b border-warning/30 bg-warning-tint px-4 py-2 text-caption text-warning sm:px-6">

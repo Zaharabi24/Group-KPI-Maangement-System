@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, refreshAccessToken, setAccessToken, setSessionExpiredHandler } from '@/lib/api';
+import { api, detectApiMode, isDemoMode, refreshAccessToken, setAccessToken, setSessionExpiredHandler } from '@/lib/api';
 import type { AuthResponse, CurrentUser, Profile, RoleCode } from '@/lib/types';
 import { ROLE_HOME, primaryRole } from '@/lib/format';
 
@@ -9,11 +9,13 @@ interface AuthContextValue {
   profile: Profile | null;
   loading: boolean;
   authenticated: boolean;
+  demo: boolean;
   home: string;
   role: RoleCode;
   hasPermission: (permission: string) => boolean;
   hasRole: (...roles: RoleCode[]) => boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<{ home: string; mustConfirmOrganisation: boolean }>;
+  quickSignIn: (email: string, password?: string) => Promise<{ home: string; mustConfirmOrganisation: boolean }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -63,6 +65,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let cancelled = false;
     (async () => {
       try {
+        // Decide once whether the real API is available. On a static deployment
+        // this switches the client to the in-browser demo dataset.
+        const mode = await detectApiMode();
+        if (cancelled) return;
+
+        if (mode === 'demo') {
+          const token = await refreshAccessToken();
+          if (cancelled) return;
+          const principal = await api.get<CurrentUser>('/auth/me');
+          if (cancelled) return;
+          setUser(principal);
+          setHome(ROLE_HOME[primaryRole(principal.roles)]);
+          await loadProfile();
+          return;
+        }
+
         const token = await refreshAccessToken();
         if (!token) throw new Error('no-session');
         if (cancelled) return;
@@ -99,6 +117,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [loadProfile],
   );
 
+  /**
+   * One-click sign-in.
+   *
+   * Used by the demo account cards. It signs in with the given address using the
+   * seeded password, and falls back to opening the dashboard directly when the
+   * platform is running in demo mode.
+   */
+  const quickSignIn = useCallback(
+    async (email: string, password = 'Anwar@KPI2026') => {
+      return login(email, password);
+    },
+    [login],
+  );
+
   const logout = useCallback(async () => {
     try {
       await api.post('/auth/logout');
@@ -116,15 +148,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       profile,
       loading,
       authenticated: Boolean(user),
+      demo: isDemoMode(),
       home,
       role: primaryRole(roles),
       hasPermission: (permission: string) => permissions.includes(permission),
       hasRole: (...required: RoleCode[]) => required.some((r) => roles.includes(r)),
       login,
+      quickSignIn,
       logout,
       refreshProfile,
     };
-  }, [user, profile, loading, home, login, logout, refreshProfile]);
+  }, [user, profile, loading, home, login, quickSignIn, logout, refreshProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
