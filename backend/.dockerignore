@@ -1,0 +1,17 @@
+node_modules
+dist
+coverage
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+storage
+uploads
+*.log
+logs
+tmp
+test
+**/*.spec.ts
+.DS_Store
+Thumbs.db

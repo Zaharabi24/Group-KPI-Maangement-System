@@ -1,0 +1,45 @@
+# ---------- Node / build ----------
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.turbo/
+.vite/
+
+# ---------- Env / secrets ----------
+.env
+.env.*
+!.env.example
+
+# ---------- Storage / runtime ----------
+storage/
+uploads/
+*.log
+logs/
+pids/
+*.pid
+tmp/
+
+# ---------- Test / coverage ----------
+junit.xml
+test-results/
+
+# ---------- OS / editor ----------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# ---------- Python helper scripts ----------
+__pycache__/
+*.pyc
+
+# ---------- Docker volumes ----------
+docker/volumes/
+
+# ---------- Source business documents (kept local, not published) ----------
+/Business Unit & Department List.xlsx
+/Anwar_KPIFlow_Variable_KPI_BRD_v1.0.docx

@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ANWAR KPIFlow · Launcher</title>
+    <meta name="description" content="Launcher and status page for the ANWAR KPIFlow Variable KPI & Performance Management Platform." />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B2545'/%3E%3Cpath d='M8 22 L13 12 L18 20 L24 9' stroke='%23FFFFFF' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+    <style>
+      :root {
+        --navy-900: #0b2545;
+        --navy-700: #13315c;
+        --navy-600: #1f4e79;
+        --navy-50: #f2f6fa;
+        --canvas: #f5f7fa;
+        --edge: #d9e1ea;
+        --ink: #1a1a1a;
+        --ink-2: #5b6770;
+        --ink-3: #8a96a1;
+        --success: #1e7b4f;
+        --warning: #b7791f;
+        --danger: #b42318;
+        --radius: 12px;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        background: var(--canvas);
+        color: var(--ink);
+        font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+        font-size: 14px;
+        line-height: 20px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px 56px; }
+
+      /* ---------------------------------------------------------------- header */
+      header.hero {
+        background: var(--navy-900);
+        color: #fff;
+        padding: 44px 16px 40px;
+        margin-bottom: 28px;
+      }
+      header.hero .wrap { padding-bottom: 0; }
+      .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+      .brand .mark {
+        width: 46px; height: 46px; border-radius: 11px;
+        background: rgba(255, 255, 255, 0.12);
+        display: grid; place-items: center; flex: none;
+      }
+      .brand h1 { font-size: 19px; font-weight: 600; letter-spacing: 0.3px; margin: 0; }
+      .brand p { margin: 2px 0 0; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #c9d6e4; }
+      .hero h2 { font-size: 27px; line-height: 34px; font-weight: 600; margin: 0 0 8px; }
+      .hero p.lede { margin: 0 0 24px; color: #c9d6e4; max-width: 720px; }
+      .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 26px; }
+
+      .btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        min-height: 44px; padding: 0 20px; border-radius: 8px;
+        font-size: 14px; font-weight: 600; text-decoration: none;
+        border: 1px solid transparent; cursor: pointer; transition: 0.15s ease;
+      }
+      .btn-primary { background: #fff; color: var(--navy-900); }
+      .btn-primary:hover { background: #e8eef5; }
+      .btn-ghost { background: rgba(255, 255, 255, 0.1); color: #fff; border-color: rgba(255, 255, 255, 0.22); }
+      .btn-ghost:hover { background: rgba(255, 255, 255, 0.18); }
+
+      .hero-meta { display: flex; flex-wrap: wrap; gap: 24px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.14); }
+      .hero-meta div span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #9fb6cd; }
+      .hero-meta div strong { font-size: 15px; font-weight: 600; }
+
+      /* ----------------------------------------------------------------- cards */
+      .card {
+        background: #fff; border: 1px solid var(--edge); border-radius: var(--radius);
+        box-shadow: 0 1px 3px rgba(11, 37, 69, 0.08);
+        padding: 20px; margin-bottom: 18px;
+      }
+      .card h3 { margin: 0 0 4px; font-size: 16px; color: var(--navy-900); }
+      .card p.sub { margin: 0 0 16px; color: var(--ink-2); font-size: 13px; }
+
+      .grid { display: grid; gap: 14px; }
+      @media (min-width: 720px) { .grid.cols-3 { grid-template-columns: repeat(3, 1fr); } .grid.cols-2 { grid-template-columns: repeat(2, 1fr); } }
+
+      .svc {
+        border: 1px solid var(--edge); border-radius: 10px; padding: 14px; background: #fff;
+      }
+      .svc .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+      .svc .name { font-weight: 600; font-size: 13px; color: var(--navy-900); }
+      .svc a { color: var(--navy-600); text-decoration: none; font-weight: 600; font-size: 13px; }
+      .svc a:hover { text-decoration: underline; }
+      .svc .url { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--ink-2); word-break: break-all; }
+      .svc .note { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+
+      .pill {
+        display: inline-flex; align-items: center; gap: 5px;
+        border-radius: 999px; padding: 2px 9px; font-size: 11px; font-weight: 600; white-space: nowrap;
+      }
+      .pill.up { background: #e7f4ec; color: var(--success); }
+      .pill.down { background: #fbeae8; color: var(--danger); }
+      .pill.wait { background: #eef1f5; color: #6b7785; }
+      .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; display: inline-block; }
+
+      /* ---------------------------------------------------------------- tables */
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      thead th {
+        text-align: left; padding: 8px 10px; background: var(--navy-50);
+        border-bottom: 1px solid var(--edge); font-size: 11px; text-transform: uppercase;
+        letter-spacing: 0.06em; color: var(--ink-2); white-space: nowrap;
+      }
+      tbody td { padding: 9px 10px; border-bottom: 1px solid var(--edge); vertical-align: middle; }
+      tbody tr:last-child td { border-bottom: 0; }
+      tbody tr:hover { background: #fafcfe; }
+      code, .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12.5px; }
+      .copy {
+        border: 1px solid var(--edge); background: #fff; border-radius: 6px;
+        padding: 3px 8px; font-size: 11px; font-weight: 600; color: var(--navy-600); cursor: pointer;
+      }
+      .copy:hover { background: var(--navy-50); }
+
+      .tag { display: inline-block; background: var(--navy-50); color: var(--navy-700); border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 600; }
+
+      ul.checks { list-style: none; margin: 0; padding: 0; }
+      ul.checks li { display: flex; gap: 8px; padding: 5px 0; color: var(--ink-2); font-size: 13px; }
+      ul.checks li::before { content: "✓"; color: var(--success); font-weight: 700; flex: none; }
+
+      .callout {
+        border-left: 3px solid var(--warning); background: #fbf2e2; color: #7a5210;
+        padding: 12px 14px; border-radius: 8px; font-size: 13px;
+      }
+      .callout strong { color: #5f3f0a; }
+
+      footer { margin-top: 8px; color: var(--ink-3); font-size: 12px; text-align: center; }
+      .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    </style>
+  </head>
+  <body>
+    <!-- ===================================================================== -->
+    <!--  ANWAR KPIFlow — launcher & status page                               -->
+    <!--  Served at /launcher.html by Vite (dev) and by Vercel (production).   -->
+    <!-- ===================================================================== -->
+
+    <header class="hero">
+      <div class="wrap">
+        <div class="brand">
+          <span class="mark" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+              <path d="M7 23 L13 11 L18 20 L25 8" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+            </svg>
+          </span>
+          <div>
+            <h1>ANWAR KPI</h1>
+            <p>KPIFlow · Phase 01</p>
+          </div>
+        </div>
+
+        <h2>Variable KPI &amp; Performance Management Platform</h2>
+        <p class="lede">
+          Every variable KPI is set, evidenced, scored, reviewed and approved in a single explainable and
+          auditable journey — built for Anwar Group of Industries from BRD v1.0.
+        </p>
+
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="/" id="open-app">
+            Open the platform
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </a>
+          <a class="btn btn-ghost" href="/login">Sign in</a>
+          <a class="btn btn-ghost" href="/register">Create an account</a>
+          <a class="btn btn-ghost" href="/api/v1/health" id="api-link">API health</a>
+        </div>
+
+        <div class="hero-meta">
+          <div><span>Business Units</span><strong>9</strong></div>
+          <div><span>Departments</span><strong>104</strong></div>
+          <div><span>Reports</span><strong>13</strong></div>
+          <div><span>Notification types</span><strong>19</strong></div>
+          <div><span>Automated jobs</span><strong>7</strong></div>
+          <div><span>Workflow tests</span><strong>100 passing</strong></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ------------------------------------------------------------ services -->
+      <section class="card" aria-labelledby="svc-h">
+        <h3 id="svc-h">Services</h3>
+        <p class="sub">Live status of the components behind this deployment.</p>
+
+        <div class="grid cols-3">
+          <div class="svc">
+            <div class="top">
+              <span class="name">Web application</span>
+              <span class="pill wait" id="st-web"><span class="dot"></span>checking</span>
+            </div>
+            <a href="/" id="url-web">Open ANWAR KPIFlow</a>
+            <div class="url" id="raw-web">—</div>
+            <div class="note">React 18 · Tailwind CSS · Framer Motion · Anime.js</div>
+          </div>
+
+          <div class="svc">
+            <div class="top">
+              <span class="name">API</span>
+              <span class="pill wait" id="st-api"><span class="dot"></span>checking</span>
+            </div>
+            <a href="/api/v1/health">/api/v1/health</a>
+            <div class="url" id="raw-api">—</div>
+            <div class="note">NestJS · Prisma · PostgreSQL · Redis · BullMQ</div>
+          </div>
+
+          <div class="svc">
+            <div class="top">
+              <span class="name">Mail catcher</span>
+              <span class="pill wait" id="st-mail"><span class="dot"></span>checking</span>
+            </div>
+            <a href="http://localhost:8026" id="url-mail">Open Mailpit inbox</a>
+            <div class="url">http://localhost:8026</div>
+            <div class="note">Captures every NT-01 … NT-19 e-mail in development</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------------ accounts -->
+      <section class="card" aria-labelledby="acc-h">
+        <h3 id="acc-h">Demo accounts</h3>
+        <p class="sub">
+          Seeded for local demonstration. Select a row to copy the e-mail; the shared password is
+          <code>Anwar@KPI2026</code>. Change every password before any real deployment.
+        </p>
+
+        <div style="overflow-x: auto">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Role</th>
+                <th scope="col">E-mail</th>
+                <th scope="col">Lands on</th>
+                <th scope="col">Password</th>
+              </tr>
+            </thead>
+            <tbody id="accounts">
+              <tr><td>Super Admin</td><td><code>superadmin@anwargroup.net</code></td><td>Group Dashboard</td><td><button class="copy" data-copy="Anwar@KPI2026">Copy</button></td></tr>
+              <tr><td>HR Admin</td><td><code>hradmin@anwargroup.net</code></td><td>Users &amp; Invitations</td><td><button class="copy" data-copy="Anwar@KPI2026">Copy</button></td></tr>
+              <tr><td>Department Head</td><td><code>kamrul.hasan@anwargroup.net</code></td><td>Department Dashboard</td><td><button class="copy" data-copy="Anwar@KPI2026">Copy</button></td></tr>
+              <tr><td>Employee</td><td><code>rafi.ahmed@anwargroup.net</code></td><td>My KPI</td><td><button class="copy" data-copy="Anwar@KPI2026">Copy</button></td></tr>
+              <tr><td>Management Viewer</td><td><code>management.viewer@anwargroup.net</code></td><td>Group Dashboard (read-only)</td><td><button class="copy" data-copy="Anwar@KPI2026">Copy</button></td></tr>
+              <tr><td>System Administrator</td><td><code>sysadmin@anwargroup.net</code></td><td>System Health</td><td><button class="copy" data-copy="Anwar@KPI2026">Copy</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------------- screens -->
+      <section class="card" aria-labelledby="scr-h">
+        <h3 id="scr-h">Jump straight to a screen</h3>
+        <p class="sub">Deep links — sign in first, the page follows your role's permissions.</p>
+        <div class="grid cols-2">
+          <ul class="checks" style="margin: 0">
+            <li><a href="/my-kpi" style="color: var(--navy-600)">My KPI</a> — cards, stepper, weight meter, create drawer</li>
+            <li><a href="/performance-summary" style="color: var(--navy-600)">Performance Summary</a> — metric cards, 10-column table, 3 charts</li>
+            <li><a href="/approvals" style="color: var(--navy-600)">KPI Pending Requests</a> — queue and decision drawer</li>
+            <li><a href="/escalations" style="color: var(--navy-600)">Escalations</a> — adjustments outside the ±10 band</li>
+            <li><a href="/dashboard" style="color: var(--navy-600)">Department Dashboard</a> — cards, drill-down, leaderboard</li>
+          </ul>
+          <ul class="checks" style="margin: 0">
+            <li><a href="/group-dashboard" style="color: var(--navy-600)">Group Dashboard</a> — BU comparison, heat table, drill-down</li>
+            <li><a href="/reports" style="color: var(--navy-600)">Reports</a> — RP-01 … RP-13 with XLSX / CSV / PDF export</li>
+            <li><a href="/admin/users" style="color: var(--navy-600)">Users &amp; Invitations</a> — roles, transfers, delegations</li>
+            <li><a href="/admin/organisation" style="color: var(--navy-600)">Organisation</a> — the 9 business units and 104 departments</li>
+            <li><a href="/admin/audit-log" style="color: var(--navy-600)">Audit Log</a> — hash-chained, with a chain verifier</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------- deployment -->
+      <section class="card" aria-labelledby="dep-h">
+        <h3 id="dep-h">Deployment</h3>
+        <p class="sub">This page is part of the production bundle, so it ships with the app.</p>
+        <div class="callout">
+          <strong>Vercel hosts the React front end.</strong> The API needs PostgreSQL, Redis, BullMQ workers and a
+          persistent volume for evidence files, none of which Vercel provides. Point the
+          <code>/api</code> rewrite in <code>vercel.json</code> at your API origin (Railway, Render, Fly or a VPS)
+          and the whole platform works from the Vercel URL. See <code>docs/DEPLOYMENT.md</code>.
+        </div>
+        <ul class="checks" style="margin-top: 14px">
+          <li>Backend: NestJS · Prisma · PostgreSQL 17 · Redis 7 · BullMQ · Docker</li>
+          <li>Frontend: React 18 · TypeScript · Vite · Tailwind CSS · Framer Motion · Anime.js · Recharts</li>
+          <li>Auth: JWT access tokens + HttpOnly refresh cookies, RBAC and server-enforced data scope</li>
+          <li>Evidence: content-checked MIME types, SHA-256, AES-256-GCM at rest, 5-minute signed URLs</li>
+          <li>Audit: append-only, hash-chained, with a weekly chain verification job</li>
+        </ul>
+      </section>
+
+      <footer>
+        ANWAR KPIFlow · Variable KPI Phase 01 · Anwar Group of Industries — Internal &amp; Confidential
+      </footer>
+    </main>
+
+    <script>
+      // The launcher is opened both from a server (http://localhost:5273/launcher.html)
+      // and directly from disk (file://…), so every probe degrades gracefully.
+      (function () {
+        var isFile = location.protocol === 'file:';
+
+        function setStatus(id, state, label) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          el.className = 'pill ' + state;
+          el.innerHTML = '<span class="dot"></span>' + label;
+        }
+
+        // Show the real absolute URLs for this deployment.
+        var origin = isFile ? 'http://localhost:5273' : location.origin;
+        var apiBase = origin + '/api/v1';
+        document.getElementById('url-web').href = origin + '/';
+        document.getElementById('raw-web').textContent = origin;
+        document.getElementById('raw-api').textContent = apiBase;
+        document.querySelectorAll('a[href^="/"]').forEach(function (a) {
+          if (a.id === 'api-link' || a.getAttribute('href').indexOf('/api') === 0) {
+            a.href = apiBase + a.getAttribute('href').replace('/api/v1', '');
+          } else if (isFile) {
+            a.href = origin + a.getAttribute('href');
+          }
+        });
+        document.getElementById('open-app').href = origin + '/';
+        setStatus('st-web', 'up', 'serving');
+
+        function probe(url, statusId, okLabel, failLabel) {
+          var done = false;
+          var timer = setTimeout(function () {
+            if (!done) setStatus(statusId, 'wait', 'no response');
+          }, 6000);
+          fetch(url, { cache: 'no-store' })
+            .then(function (r) { return r.ok ? r.json().catch(function () { return {}; }) : Promise.reject(r.status); })
+            .then(function (body) {
+              done = true;
+              clearTimeout(timer);
+              setStatus(statusId, 'up', okLabel(body));
+            })
+            .catch(function () {
+              done = true;
+              clearTimeout(timer);
+              setStatus(statusId, 'down', failLabel);
+            });
+        }
+
+        probe(apiBase + '/health', 'st-api', function (body) {
+          // The API wraps responses in { data, meta }
+          var b = body && body.data ? body.data : body;
+          var c = (b && b.checks) || {};
+          if (c.database === 'up' && c.redis === 'up') return 'up · db + redis';
+          if (c.database === 'up') return 'up · db only';
+          return 'up (degraded)';
+        }, 'unreachable');
+
+        // Mailpit only exists in the Docker/development stack.
+        (function () {
+          var img = new Image();
+          var settled = false;
+          var timer = setTimeout(function () {
+            if (!settled) setStatus('st-mail', 'wait', 'not running');
+          }, 3500);
+          img.onload = img.onerror = function () {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            setStatus('st-mail', img.naturalWidth > 0 ? 'up' : 'wait', img.naturalWidth > 0 ? 'up' : 'not running');
+          };
+          img.src = 'http://localhost:8026/favicon.ico?ts=' + Date.now();
+        })();
+
+        // Copy-to-clipboard for the demo passwords.
+        document.addEventListener('click', function (event) {
+          var btn = event.target.closest('.copy');
+          if (!btn) return;
+          var value = btn.getAttribute('data-copy');
+          var done = function () {
+            var original = btn.textContent;
+            btn.textContent = 'Copied';
+            setTimeout(function () { btn.textContent = original; }, 1400);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).then(done).catch(done);
+          } else {
+            var input = document.createElement('textarea');
+            input.value = value;
+            document.body.appendChild(input);
+            input.select();
+            try { document.execCommand('copy'); } catch (e) { /* ignore */ }
+            document.body.removeChild(input);
+            done();
+          }
+        });
+
+        // Clicking a demo e-mail copies it for a faster sign-in.
+        document.querySelectorAll('#accounts tbody tr').forEach(function (row) {
+          var code = row.querySelector('code');
+          if (!code) return;
+          row.style.cursor = 'pointer';
+          row.title = 'Click to copy ' + code.textContent;
+          row.addEventListener('click', function (event) {
+            if (event.target.closest('.copy')) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code.textContent);
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1089 @@
+// =====================================================================================
+//  ANWAR KPI · Anwar KPIFlow — Variable KPI & Performance Management Platform
+//  Prisma schema (PostgreSQL) — implements BRD v1.0 §12.2 "Data classes" and §12.3 ERD.
+//  Conventions: decimals map to NUMERIC (never float), historical tables are insert-only.
+// =====================================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================================================
+//  ENUMS
+// =====================================================================================
+
+enum RoleCode {
+  SUPER_ADMIN // Upper Management — group-wide control
+  HR_ADMIN // Maintains users, organisation, calendar, library; no approvals
+  DEPT_HEAD // Department Head / Approver
+  EMPLOYEE
+  MGMT_VIEWER // Read-only management reporting
+  SYS_ADMIN // IT — infrastructure only, no KPI content
+}
+
+enum UserStatus {
+  PENDING_ACTIVATION // FR-AUTH-04
+  ACTIVE
+  INACTIVE // leaver / deactivated (EC-04, EC-16)
+  LOCKED // 5 consecutive failures, 15 minutes (FR-AUTH-07)
+}
+
+enum KpiType {
+  VARIABLE // Phase 01
+  FIXED // later (BR-12)
+  PROJECT
+  PEOPLE_CULTURE
+  TYPE_5 // OQ-01
+}
+
+enum MeasurementType {
+  COUNT // Integer
+  MONETARY // BDT 2dp
+  PERCENTAGE // 0.00–1000.00
+  TIME // 2dp, minutes/hours/days
+  RATING // 1dp on a defined scale
+  QUALITATIVE // Rubric level 1–5
+}
+
+enum Direction {
+  HIGHER // higher is better
+  LOWER // lower is better
+}
+
+enum Frequency {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum KpiStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  RETURNED
+  ESCALATED
+  APPROVED
+  REJECTED
+  NOT_SUBMITTED // deadline passed with no submission (EC-09)
+  DELETED // soft delete with reason (restorable by Super Admin)
+}
+
+enum PeriodStatus {
+  OPEN
+  CLOSED // closed by Super Admin — KPIs locked, snapshots written
+  REOPENED // temporarily unlocked for corrections only (BR-R12)
+}
+
+enum KpiCategoryCode {
+  FINANCIAL
+  CUSTOMER
+  INTERNAL_PROCESS
+  PEOPLE_LEARNING
+}
+
+enum EvidenceScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
+}
+
+enum DecisionAction {
+  APPROVE // Approve calculated
+  ADJUST // Apply adjustment (may escalate)
+  RETURN // Return to employee
+  REJECT // Reject (terminal)
+  DELETE // Soft delete by approver
+  ESCALATION_APPROVE
+  ESCALATION_DECLINE
+  CORRECTION_APPROVE
+  CORRECTION_DECLINE
+  WITHDRAW
+  BULK_APPROVE
+  EXTENSION_GRANT
+  PERIOD_REOPEN
+}
+
+enum EscalationStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  CANCELLED
+}
+
+enum CorrectionStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  CANCELLED
+}
+
+enum TokenType {
+  ACTIVATION // 24 h, single use (NT-01)
+  INVITATION // 72 h, single use (NT-02)
+  PASSWORD_RESET // 30 min, single use (NT-03)
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum TemplateScope {
+  GROUP
+  DEPARTMENT
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  BOTH
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  FAILED
+  RETRYING
+}
+
+enum ExportStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+enum ReportFormat {
+  XLSX
+  CSV
+  PDF
+}
+
+enum RagStatus {
+  GREEN
+  AMBER
+  RED
+}
+
+enum RejectCategory {
+  NOT_MEASURABLE
+  NOT_ALIGNED_TO_ROLE
+  DUPLICATE
+  INSUFFICIENT_EVIDENCE
+  OTHER
+}
+
+enum AuditActorKind {
+  USER
+  SYSTEM
+  ANONYMOUS
+}
+
+// =====================================================================================
+//  MASTER DATA  (FR-ORG-01, §12.2)
+// =====================================================================================
+
+model BusinessUnit {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique @db.VarChar(16) // ACL, AIL, ACSL, AOPL, AGL, AESL, HDPML, AISPL, BHB
+  name      String   @db.VarChar(160)
+  shortName String?  @db.VarChar(64)
+  division  String?  @db.VarChar(80)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  departments     Department[]
+  users           User[]
+  kpis            Kpi[]
+  templates       KpiTemplate[]
+  snapshots       PerformanceSnapshot[]
+  invitations     Invitation[]
+  roleScopes      UserRoleScope[]
+  auditLogs       AuditLog[]
+
+  @@index([isActive])
+  @@map("business_unit")
+}
+
+model Department {
+  id             String   @id @default(uuid()) @db.Uuid
+  businessUnitId String   @db.Uuid
+  code           String   @db.VarChar(24)
+  name           String   @db.VarChar(160)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  businessUnit BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Restrict)
+
+  users           User[]
+  kpis            Kpi[]
+  templates       KpiTemplate[]
+  snapshots       PerformanceSnapshot[]
+  invitations     Invitation[]
+  roleScopes      UserRoleScope[]
+  heads           DepartmentHead[]
+  assignments     KpiAssignment[]
+  auditLogs       AuditLog[]
+  exports         ExportJob[]
+  extensions      KpiExtension[]
+  correctionReqs  CorrectionRequest[]
+  delegationsFrom ApproverDelegation[] @relation("DelegationFrom")
+
+  @@unique([businessUnitId, name])
+  @@unique([businessUnitId, code])
+  @@index([businessUnitId, isActive])
+  @@map("department")
+}
+
+/// Denormalised helper: every Department Head of a department (FR-ORG-02 — several allowed).
+/// Kept in sync by the Users service; used for approver drop-downs and queue routing.
+model DepartmentHead {
+  id           String   @id @default(uuid()) @db.Uuid
+  departmentId String   @db.Uuid
+  userId       String   @db.Uuid
+  isPrimary    Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, userId])
+  @@index([userId, isActive])
+  @@map("department_head")
+}
+
+model Designation {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique @db.VarChar(160)
+  level     Int?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  users User[]
+
+  @@map("designation")
+}
+
+model User {
+  id                 String     @id @default(uuid()) @db.Uuid
+  email              String     @unique @db.VarChar(190) // lower-case @anwargroup.net
+  employeeCode       String     @unique @db.VarChar(32) // Employee ID
+  fullName           String     @db.VarChar(160)
+  passwordHash       String?    @db.VarChar(255)
+  status             UserStatus @default(PENDING_ACTIVATION)
+  corporatePhone     String?    @db.VarChar(24) // E.164
+  designationId      String?    @db.Uuid
+  designationTitle   String?    @db.VarChar(160)
+  businessUnitId     String?    @db.Uuid
+  departmentId       String?    @db.Uuid
+  organisationConfirmed Boolean @default(false) // FR-ORG-09
+  avatarUrl          String?
+  emailDigest        Boolean    @default(false) // FR-PRF-05 — daily digest for non-critical
+  failedLoginCount   Int        @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  passwordChangedAt  DateTime?
+  sessionVersion     Int        @default(1) // bump = revoke all refresh tokens (NFR-SEC-05)
+  breakGlassAccess   Boolean    @default(false)
+  deactivatedAt      DateTime?
+  deactivationReason String?    @db.VarChar(500)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  businessUnit BusinessUnit? @relation(fields: [businessUnitId], references: [id], onDelete: Restrict)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  designation  Designation?  @relation(fields: [designationId], references: [id], onDelete: SetNull)
+
+  roles            UserRole[]
+  scopes           UserRoleScope[]
+  sessions         Session[]
+  tokens           Token[]
+  headOf           DepartmentHead[]
+  kpisOwned        Kpi[]              @relation("KpiEmployee")
+  kpisApproving    Kpi[]              @relation("KpiApprover")
+  kpisDecided      Kpi[]              @relation("KpiDecider")
+  kpisAssigned     Kpi[]              @relation("KpiAssigner")
+  versions         KpiVersion[]
+  evidence         KpiEvidence[]
+  decisions        KpiDecision[]
+  adjustments      KpiAdjustment[]
+  escalationsReq   Escalation[]       @relation("EscalationRequester")
+  escalationsDec   Escalation[]       @relation("EscalationDecider")
+  correctionsReq   CorrectionRequest[] @relation("CorrectionRequester")
+  correctionsDec   CorrectionRequest[] @relation("CorrectionDecider")
+  calcLogs         CalculationLog[]
+  snapshots        PerformanceSnapshot[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]         @relation("AuditActor")
+  auditLogsSubject AuditLog[]         @relation("AuditSubject")
+  invitationsSent  Invitation[]       @relation("InvitationSender")
+  templates        KpiTemplate[]
+  assignmentsMade  KpiAssignment[]
+  periodsClosed    KpiPeriod[]       @relation("PeriodCloser")
+  configVersions   ConfigurationVersion[]
+  exports          ExportJob[]
+  extensionsGiven  KpiExtension[]
+  delegationsFrom  ApproverDelegation[] @relation("DelegationFromUser")
+  delegationsTo    ApproverDelegation[] @relation("DelegationToUser")
+  emailLogs        EmailLog[]
+
+  @@index([departmentId, status])
+  @@index([businessUnitId])
+  @@index([status])
+  @@map("user")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        RoleCode @unique
+  name        String   @db.VarChar(80)
+  description String?  @db.VarChar(400)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  userRoles UserRole[]
+  scopes    UserRoleScope[]
+
+  @@map("role")
+}
+
+model UserRole {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  roleId    String   @db.Uuid
+  grantedById String? @db.Uuid
+  grantedAt DateTime @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+  @@map("user_role")
+}
+
+/// §5.3 — departmentId = null means group scope.
+model UserRoleScope {
+  id             String  @id @default(uuid()) @db.Uuid
+  userId         String  @db.Uuid
+  roleId         String  @db.Uuid
+  businessUnitId String? @db.Uuid
+  departmentId   String? @db.Uuid
+  createdAt      DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role          @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  businessUnit BusinessUnit? @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, departmentId])
+  @@index([userId])
+  @@map("user_role_scope")
+}
+
+/// FR-ORG-08 — approver delegation for a date range.
+model ApproverDelegation {
+  id                String   @id @default(uuid()) @db.Uuid
+  fromUserId        String   @db.Uuid
+  toUserId          String   @db.Uuid
+  departmentId      String   @db.Uuid
+  startDate         DateTime @db.Date
+  endDate           DateTime @db.Date
+  reason            String?  @db.VarChar(500)
+  isActive          Boolean  @default(true)
+  createdById       String?  @db.Uuid
+  createdAt         DateTime @default(now())
+
+  fromUser   User       @relation("DelegationFromUser", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser     User       @relation("DelegationToUser", fields: [toUserId], references: [id], onDelete: Cascade)
+  department Department @relation("DelegationFrom", fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@index([departmentId, isActive])
+  @@map("approver_delegation")
+}
+
+// =====================================================================================
+//  AUTH / SESSION  (M01, NFR-SEC-02/05)
+// =====================================================================================
+
+model Session {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  refreshTokenHash String   @unique @db.VarChar(255)
+  userAgent        String?  @db.VarChar(400)
+  ipAddress        String?  @db.VarChar(64)
+  createdAt        DateTime @default(now())
+  lastSeenAt       DateTime @default(now())
+  idleExpiresAt    DateTime
+  absoluteExpiresAt DateTime
+  revokedAt        DateTime?
+  revokedReason    String?  @db.VarChar(160)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("session")
+}
+
+model Token {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String?   @db.Uuid
+  email     String?   @db.VarChar(190)
+  type      TokenType
+  tokenHash String    @unique @db.VarChar(255)
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int       @default(0)
+  meta      Json?
+  createdAt DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, type])
+  @@index([expiresAt])
+  @@map("token")
+}
+
+model Invitation {
+  id             String           @id @default(uuid()) @db.Uuid
+  email          String           @db.VarChar(190)
+  employeeCode   String           @db.VarChar(32)
+  fullName       String           @db.VarChar(160)
+  businessUnitId String?          @db.Uuid
+  departmentId   String?          @db.Uuid
+  roleId         String           @db.Uuid
+  designation    String?          @db.VarChar(160)
+  status         InvitationStatus @default(PENDING)
+  tokenHash      String           @unique @db.VarChar(255)
+  expiresAt      DateTime
+  invitedById    String?          @db.Uuid
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  resendCount    Int              @default(0)
+  lastSentAt     DateTime?
+  createdAt      DateTime         @default(now())
+
+  businessUnit BusinessUnit? @relation(fields: [businessUnitId], references: [id], onDelete: SetNull)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  invitedBy    User?         @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([email])
+  @@map("invitation")
+}
+
+// =====================================================================================
+//  CONFIGURATION  (FR-CFG-02, versioned & immutable once published)
+// =====================================================================================
+
+model ConfigurationVersion {
+  id                 String   @id @default(uuid()) @db.Uuid
+  version            Int      @unique
+  effectiveFrom      DateTime @db.Date
+  scoreCap           Decimal  @db.Decimal(7, 2) @default(120.00)
+  scoreFloor         Decimal  @db.Decimal(7, 2) @default(0.00)
+  adjustmentBand     Decimal  @db.Decimal(7, 2) @default(10.00)
+  minWeight          Int      @default(5)
+  maxWeight          Int      @default(50)
+  maxKpisPerPeriod   Int      @default(10)
+  submissionGraceDays Int     @default(7)
+  reviewWindowDays   Int      @default(7)
+  reviewSlaDays      Int      @default(5)
+  extensionMaxDays   Int      @default(7)
+  minReasonLength    Int      @default(15)
+  maxEvidenceFiles   Int      @default(5)
+  maxEvidenceSizeMb  Int      @default(10)
+  qualitativeMap     Json     @default("{\"1\":50,\"2\":75,\"3\":100,\"4\":110,\"5\":120}")
+  ragThresholds      Json     @default("{\"green\":95,\"amber\":75}")
+  categories         Json     @default("[\"FINANCIAL\",\"CUSTOMER\",\"INTERNAL_PROCESS\",\"PEOPLE_LEARNING\"]")
+  allowedMimeTypes   Json     @default("[\"application/pdf\",\"image/jpeg\",\"image/png\",\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\",\"application/vnd.ms-excel\",\"text/csv\",\"application/vnd.openxmlformats-officedocument.wordprocessingml.document\"]")
+  isActive           Boolean  @default(true)
+  notes              String?  @db.VarChar(1000)
+  publishedById      String?  @db.Uuid
+  createdAt          DateTime @default(now())
+
+  publishedBy User? @relation(fields: [publishedById], references: [id], onDelete: SetNull)
+  kpis        Kpi[]
+  calcLogs    CalculationLog[]
+
+  @@index([isActive, effectiveFrom])
+  @@map("configuration_version")
+}
+
+// =====================================================================================
+//  PERIOD CALENDAR  (FR-CFG-01, §3.5)
+// =====================================================================================
+
+model KpiPeriod {
+  id                 String       @id @default(uuid()) @db.Uuid
+  frequency          Frequency
+  code               String       @unique @db.VarChar(24) // 2026-08, 2026-Q3, 2026
+  label              String       @db.VarChar(64) // "August 2026"
+  year               Int
+  periodIndex        Int // 1..12 monthly, 1..4 quarterly, year
+  startDate          DateTime     @db.Date
+  endDate            DateTime     @db.Date
+  submissionDeadline DateTime     @db.Date
+  reviewDeadline     DateTime     @db.Date
+  status             PeriodStatus @default(OPEN)
+  closedAt           DateTime?
+  closedById         String?      @db.Uuid
+  reopenedAt         DateTime?
+  reopenReason       String?      @db.VarChar(1000)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  closedBy  User?               @relation("PeriodCloser", fields: [closedById], references: [id], onDelete: SetNull)
+  kpis      Kpi[]
+  snapshots PerformanceSnapshot[]
+  extensions KpiExtension[]
+
+  @@unique([frequency, startDate])
+  @@index([frequency, status])
+  @@index([year])
+  @@map("kpi_period")
+}
+
+model KpiExtension {
+  id          String   @id @default(uuid()) @db.Uuid
+  kpiId       String   @db.Uuid
+  periodId    String   @db.Uuid
+  grantedById String?  @db.Uuid
+  departmentId String? @db.Uuid
+  reason      String   @db.VarChar(1000)
+  days        Int
+  until       DateTime @db.Date
+  createdAt   DateTime @default(now())
+
+  kpi       Kpi       @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  period    KpiPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  grantedBy User?     @relation(fields: [grantedById], references: [id], onDelete: SetNull)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@index([kpiId])
+  @@map("kpi_extension")
+}
+
+// =====================================================================================
+//  KPI LIBRARY  (M04, FR-LIB-01..05)
+// =====================================================================================
+
+model KpiCategory {
+  id        String  @id @default(uuid()) @db.Uuid
+  code      KpiCategoryCode @unique
+  name      String  @db.VarChar(80)
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  kpis      Kpi[]
+  templates KpiTemplate[]
+
+  @@map("kpi_category")
+}
+
+model KpiTemplate {
+  id              String         @id @default(uuid()) @db.Uuid
+  code            String         @unique @db.VarChar(32)
+  name            String         @db.VarChar(160)
+  description     String?        @db.VarChar(1000)
+  kpiType         KpiType        @default(VARIABLE)
+  categoryId      String         @db.Uuid
+  measurementType MeasurementType
+  unit            String         @db.VarChar(32)
+  direction       Direction
+  suggestedWeight Int
+  rubricDescriptors Json?
+  scope           TemplateScope  @default(GROUP)
+  businessUnitId  String?        @db.Uuid
+  departmentId    String?        @db.Uuid
+  version         Int            @default(1)
+  isPublished     Boolean        @default(true)
+  createdById     String?        @db.Uuid
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  category     KpiCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  businessUnit BusinessUnit?  @relation(fields: [businessUnitId], references: [id], onDelete: SetNull)
+  department   Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  createdBy    User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  kpis         Kpi[]
+  assignments  KpiAssignment[]
+
+  @@index([scope, departmentId])
+  @@map("kpi_template")
+}
+
+model KpiAssignment {
+  id            String   @id @default(uuid()) @db.Uuid
+  templateId    String   @db.Uuid
+  departmentId  String   @db.Uuid
+  periodId      String   @db.Uuid
+  assignedById  String   @db.Uuid
+  employeeCount Int      @default(0)
+  createdCount  Int      @default(0)
+  conflictCount Int      @default(0)
+  conflicts     Json?
+  createdAt     DateTime @default(now())
+
+  template   KpiTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  assignedBy User       @relation(fields: [assignedById], references: [id], onDelete: Cascade)
+
+  @@index([periodId, departmentId])
+  @@map("kpi_assignment")
+}
+
+// =====================================================================================
+//  TRANSACTIONAL — KPI  (M05–M07, §12.2)
+// =====================================================================================
+
+model Kpi {
+  id                String          @id @default(uuid()) @db.Uuid
+  code              String          @unique @db.VarChar(40) // KPI-{BU}-{YYYY}-{000000}
+  employeeId        String          @db.Uuid
+  periodId          String          @db.Uuid
+  frequency         Frequency
+  kpiType           KpiType         @default(VARIABLE)
+  templateId        String?         @db.Uuid
+
+  name              String          @db.VarChar(160)
+  description       String?         @db.VarChar(500)
+  categoryId        String          @db.Uuid
+  measurementType   MeasurementType
+  unit              String          @db.VarChar(32)
+  direction         Direction
+
+  target            Decimal?        @db.Decimal(18, 2)
+  actual            Decimal?        @db.Decimal(18, 2)
+  rubricLevel       Int?
+  qualitativeMapSnapshot Json?
+
+  achievement       Decimal?        @db.Decimal(12, 2) // ACH — uncapped
+  calculatedScore   Decimal?        @db.Decimal(7, 2) // CS
+  finalScore        Decimal?        @db.Decimal(7, 2) // FS
+  overrideScore     Decimal?        @db.Decimal(7, 2)
+  kpiWeight         Int
+  weightedScore     Decimal?        @db.Decimal(7, 2) // WS
+
+  status            KpiStatus       @default(DRAFT)
+  isLocked          Boolean         @default(false)
+  isAssigned        Boolean         @default(false)
+  assignedById      String?         @db.Uuid
+  targetLocked      Boolean         @default(false)
+  weightLocked      Boolean         @default(false)
+
+  // organisation snapshot captured at submit (§5.3)
+  businessUnitId    String?         @db.Uuid
+  departmentId      String?         @db.Uuid
+  approverId        String?         @db.Uuid
+
+  remarks           String?         @db.VarChar(1000)
+  evidenceCount     Int             @default(0)
+
+  currentVersionNo  Int             @default(1)
+  rowVersion        Int             @default(0) // optimistic locking (EC-18)
+
+  submittedAt       DateTime?
+  reviewStartedAt   DateTime?
+  decidedAt         DateTime?
+  decidedById       String?         @db.Uuid
+  returnedAt        DateTime?
+  returnComment     String?         @db.VarChar(1000)
+  rejectedReason    String?         @db.VarChar(1000)
+  rejectCategory    RejectCategory?
+  overdueAt         DateTime?
+  lastCalculatedAt  DateTime?
+  configVersionId   String?         @db.Uuid
+
+  deletedAt         DateTime?
+  deletedById       String?         @db.Uuid
+  deletedReason     String?         @db.VarChar(1000)
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  employee     User            @relation("KpiEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  period       KpiPeriod       @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  category     KpiCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  template     KpiTemplate?    @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  businessUnit BusinessUnit?   @relation(fields: [businessUnitId], references: [id], onDelete: SetNull)
+  department   Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  approver     User?           @relation("KpiApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  decidedBy    User?           @relation("KpiDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  assignedBy   User?           @relation("KpiAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+  configVersion ConfigurationVersion? @relation(fields: [configVersionId], references: [id], onDelete: SetNull)
+
+  versions     KpiVersion[]
+  evidence     KpiEvidence[]
+  decisions    KpiDecision[]
+  adjustments  KpiAdjustment[]
+  escalations  Escalation[]
+  corrections  CorrectionRequest[]
+  calcLogs     CalculationLog[]
+  extensions   KpiExtension[]
+
+  @@unique([employeeId, periodId, name])
+  @@index([approverId, status])
+  @@index([departmentId, periodId, status])
+  @@index([employeeId, frequency, periodId])
+  @@index([status])
+  @@index([code])
+  @@map("kpi")
+}
+
+model KpiVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  kpiId         String   @db.Uuid
+  versionNo     Int
+  snapshot      Json // full field snapshot (T, A, W, ACH, CS, FS, WS…)
+  changeReason  String?  @db.VarChar(1000)
+  trigger       String   @db.VarChar(60) // SUBMIT | RESUBMIT | ADJUST | RESTORE | CORRECTION | APPROVE
+  calculation   Json?
+  createdById   String?  @db.Uuid
+  createdAt     DateTime @default(now())
+
+  kpi       Kpi   @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([kpiId, versionNo])
+  @@index([kpiId])
+  @@map("kpi_version")
+}
+
+model KpiEvidence {
+  id           String             @id @default(uuid()) @db.Uuid
+  kpiId        String             @db.Uuid
+  versionNo    Int                @default(1)
+  originalName String             @db.VarChar(255)
+  fileName     String             @db.VarChar(255)
+  mimeType     String             @db.VarChar(120)
+  extension    String             @db.VarChar(12)
+  sizeBytes    Int
+  sha256       String             @db.VarChar(64)
+  storageKey   String             @db.VarChar(255)
+  scanStatus   EvidenceScanStatus @default(PENDING)
+  scanDetail   String?            @db.VarChar(500)
+  isCurrent    Boolean            @default(true)
+  uploadedById String             @db.Uuid
+  replacedById String?            @db.Uuid
+  deletedAt    DateTime?
+  createdAt    DateTime           @default(now())
+
+  kpi        Kpi   @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  uploadedBy User  @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([kpiId, isCurrent])
+  @@map("kpi_evidence")
+}
+
+model KpiDecision {
+  id             String         @id @default(uuid()) @db.Uuid
+  kpiId          String         @db.Uuid
+  action         DecisionAction
+  actorId        String         @db.Uuid
+  onBehalfOfId   String?        @db.Uuid
+  reason         String?        @db.VarChar(1000)
+  rejectCategory RejectCategory?
+  scoreBefore    Decimal?       @db.Decimal(7, 2)
+  scoreAfter     Decimal?       @db.Decimal(7, 2)
+  statusBefore   KpiStatus?
+  statusAfter    KpiStatus?
+  rowVersion     Int?
+  createdAt      DateTime       @default(now())
+
+  kpi   Kpi  @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  adjustments KpiAdjustment[]
+
+  @@index([kpiId])
+  @@index([actorId, createdAt])
+  @@map("kpi_decision")
+}
+
+model KpiAdjustment {
+  id         String   @id @default(uuid()) @db.Uuid
+  kpiId      String   @db.Uuid
+  decisionId String?  @db.Uuid
+  field      String   @db.VarChar(40) // target | actual | kpiWeight | rubricLevel | finalScore
+  oldValue   String?  @db.VarChar(255)
+  newValue   String?  @db.VarChar(255)
+  reason     String   @db.VarChar(1000)
+  actorId    String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  kpi      Kpi          @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  decision KpiDecision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+  actor    User         @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([kpiId])
+  @@map("kpi_adjustment")
+}
+
+model Escalation {
+  id               String           @id @default(uuid()) @db.Uuid
+  kpiId            String           @db.Uuid
+  requestedById    String           @db.Uuid
+  calculatedScore  Decimal          @db.Decimal(7, 2)
+  proposedScore    Decimal          @db.Decimal(7, 2)
+  delta            Decimal          @db.Decimal(7, 2)
+  reason           String           @db.VarChar(1000)
+  pendingChanges   Json?
+  status           EscalationStatus @default(PENDING)
+  decidedById      String?          @db.Uuid
+  decidedAt        DateTime?
+  decisionComment  String?          @db.VarChar(1000)
+  createdAt        DateTime         @default(now())
+
+  kpi         Kpi  @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  requestedBy User @relation("EscalationRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedBy   User? @relation("EscalationDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("escalation")
+}
+
+model CorrectionRequest {
+  id           String           @id @default(uuid()) @db.Uuid
+  kpiId        String           @db.Uuid
+  requestedById String          @db.Uuid
+  departmentId String?          @db.Uuid
+  reason       String           @db.VarChar(1000)
+  changes      Json?
+  status       CorrectionStatus @default(PENDING)
+  decidedById  String?          @db.Uuid
+  decidedAt    DateTime?
+  decisionComment String?       @db.VarChar(1000)
+  newVersionNo Int?
+  createdAt    DateTime         @default(now())
+
+  kpi         Kpi         @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  requestedBy User        @relation("CorrectionRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedBy   User?       @relation("CorrectionDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  department  Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("correction_request")
+}
+
+// =====================================================================================
+//  HISTORICAL — insert-only  (§12.2)
+// =====================================================================================
+
+model CalculationLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  kpiId           String?  @db.Uuid
+  inputs          Json
+  outputs         Json
+  formulaText     String   @db.VarChar(1000)
+  configVersionId String?  @db.Uuid
+  trigger         String   @db.VarChar(60)
+  actorId         String?  @db.Uuid
+  durationMs      Int?
+  correlationId   String?  @db.VarChar(64)
+  createdAt       DateTime @default(now())
+
+  kpi           Kpi?                  @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  configVersion ConfigurationVersion? @relation(fields: [configVersionId], references: [id], onDelete: SetNull)
+  actor         User?                 @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([kpiId, createdAt])
+  @@index([createdAt])
+  @@map("calculation_log")
+}
+
+model PerformanceSnapshot {
+  id                 String    @id @default(uuid()) @db.Uuid
+  employeeId         String    @db.Uuid
+  periodId           String    @db.Uuid
+  frequency          Frequency
+  departmentId       String?   @db.Uuid
+  businessUnitId     String?   @db.Uuid
+  totalKpiScore      Decimal   @db.Decimal(7, 2)
+  averageAchievement Decimal   @db.Decimal(12, 2)
+  allocatedWeight    Int
+  approvedCount      Int
+  totalCount         Int
+  rag                RagStatus
+  rank               Int?
+  previousScore      Decimal?  @db.Decimal(7, 2)
+  difference         Decimal?  @db.Decimal(7, 2)
+  payload            Json?
+  createdAt          DateTime  @default(now())
+
+  employee     User          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period       KpiPeriod     @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  businessUnit BusinessUnit? @relation(fields: [businessUnitId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, periodId, frequency])
+  @@index([periodId, departmentId])
+  @@map("performance_snapshot")
+}
+
+model AuditLog {
+  id             String          @id @default(uuid()) @db.Uuid
+  actorId        String?         @db.Uuid
+  actorKind      AuditActorKind  @default(USER)
+  actorRole      String?         @db.VarChar(40)
+  action         String          @db.VarChar(80)
+  entityType     String          @db.VarChar(60)
+  entityId       String?         @db.VarChar(64)
+  employeeId     String?         @db.Uuid
+  departmentId   String?         @db.Uuid
+  businessUnitId String?         @db.Uuid
+  before         Json?
+  after          Json?
+  changedFields  Json?
+  reason         String?         @db.VarChar(1000)
+  ipAddress      String?         @db.VarChar(64)
+  userAgent      String?         @db.VarChar(400)
+  correlationId  String?         @db.VarChar(64)
+  previousHash   String?         @db.VarChar(64)
+  recordHash     String          @db.VarChar(64)
+  createdAt      DateTime        @default(now())
+
+  actor        User?         @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  employee     User?         @relation("AuditSubject", fields: [employeeId], references: [id], onDelete: SetNull)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  businessUnit BusinessUnit? @relation(fields: [businessUnitId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+// =====================================================================================
+//  NOTIFICATIONS / EMAIL / EXPORTS  (§15, FR-NTF, FR-RPT-02)
+// =====================================================================================
+
+model Notification {
+  id         String             @id @default(uuid()) @db.Uuid
+  userId     String             @db.Uuid
+  code       String             @db.VarChar(12) // NT-01 … NT-19
+  title      String             @db.VarChar(200)
+  body       String             @db.VarChar(2000)
+  deepLink   String?            @db.VarChar(400)
+  entityType String?            @db.VarChar(60)
+  entityId   String?            @db.VarChar(64)
+  channel    NotificationChannel @default(IN_APP)
+  status     NotificationStatus @default(UNREAD)
+  severity   String             @db.VarChar(20) @default("info")
+  emailSent  Boolean            @default(false)
+  readAt     DateTime?
+  createdAt  DateTime           @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@map("notification")
+}
+
+model EmailLog {
+  id           String      @id @default(uuid()) @db.Uuid
+  toEmail      String      @db.VarChar(190)
+  ccEmail      String?     @db.VarChar(400)
+  subject      String      @db.VarChar(300)
+  templateCode String?     @db.VarChar(40)
+  payload      Json?
+  status       EmailStatus @default(QUEUED)
+  attempts     Int         @default(0)
+  jobId        String?     @db.VarChar(64)
+  lastError    String?     @db.VarChar(1000)
+  messageId    String?     @db.VarChar(200)
+  userId       String?     @db.Uuid
+  sentAt       DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([toEmail])
+  @@map("email_log")
+}
+
+model ExportJob {
+  id          String       @id @default(uuid()) @db.Uuid
+  userId      String       @db.Uuid
+  reportCode  String       @db.VarChar(12)
+  format      ReportFormat
+  filters     Json?
+  status      ExportStatus @default(QUEUED)
+  filePath    String?      @db.VarChar(400)
+  fileName    String?      @db.VarChar(255)
+  rowCount    Int?
+  error       String?      @db.VarChar(1000)
+  departmentId String?     @db.Uuid
+  jobId       String?      @db.VarChar(64)
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@map("export_job")
+}
+
+model SystemSetting {
+  key         String   @id @db.VarChar(80)
+  value       Json
+  description String?  @db.VarChar(400)
+  updatedAt   DateTime @updatedAt
+  updatedById String?  @db.Uuid
+
+  @@map("system_setting")
+}
+
+// =====================================================================================
+//  INFRASTRUCTURE — refresh-token denylist & idempotency  (NFR-INT-01)
+// =====================================================================================
+
+model IdempotencyKey {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @db.VarChar(120)
+  userId      String?  @db.Uuid
+  endpoint    String   @db.VarChar(200)
+  requestHash String?  @db.VarChar(64)
+  response    Json?
+  statusCode  Int?
+  createdAt   DateTime @default(now())
+
+  @@unique([key, endpoint])
+  @@index([createdAt])
+  @@map("idempotency_key")
+}
+
+model ScheduledJobRun {
+  id        String   @id @default(uuid()) @db.Uuid
+  jobName   String   @db.VarChar(80)
+  status    String   @db.VarChar(20)
+  detail    Json?
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+
+  @@index([jobName, startedAt])
+  @@map("scheduled_job_run")
+}

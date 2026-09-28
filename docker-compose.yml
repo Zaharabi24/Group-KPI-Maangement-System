@@ -1,0 +1,186 @@
+# =============================================================================
+#  ANWAR KPIFlow â€” Docker Compose (development / local demonstration)
+#  Services: postgres Â· redis Â· mailpit Â· api (NestJS) Â· web (React + Nginx)
+#
+#  Start everything:   docker compose up -d --build
+#  Start only infra:   docker compose up -d postgres redis mailpit
+#  Logs:               docker compose logs -f api
+#  Reset the data:     docker compose down -v
+# =============================================================================
+
+name: anwar-kpiflow
+
+services:
+  # ------------------------------------------------------------------ PostgreSQL
+  postgres:
+    image: postgres:17-alpine
+    container_name: anwar-kpi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-anwar_kpi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anwar_kpi_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-anwar_kpi}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: Asia/Dhaka
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anwar_kpi} -d ${POSTGRES_DB:-anwar_kpi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks: [anwar-kpi]
+
+  # ----------------------------------------------------------------------- Redis
+  redis:
+    image: redis:7-alpine
+    container_name: anwar-kpi-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [anwar-kpi]
+
+  # --------------------------------------------------------------------- Mailpit
+  # Captures every e-mail sent by the platform (NT-01 â€¦ NT-19) so the whole
+  # notification flow can be demonstrated without a real SMTP relay.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: anwar-kpi-mailpit
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 2000
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    ports:
+      - "${MAILPIT_WEB_PORT:-8026}:8025" # web inbox
+      - "${MAILPIT_SMTP_PORT:-1026}:1025" # SMTP
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    networks: [anwar-kpi]
+
+  # ------------------------------------------------------------------ API (NestJS)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: anwar-kpi-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      API_PREFIX: api/v1
+      APP_NAME: ANWAR KPIFlow
+      APP_URL: ${APP_URL:-http://localhost:8090}
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:8090,http://localhost:5273,http://localhost:4100}"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-anwar_kpi}:${POSTGRES_PASSWORD:-anwar_kpi_secret}@postgres:5432/${POSTGRES_DB:-anwar_kpi}?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      QUEUE_PREFIX: anwar-kpi
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access-secret-min-32-characters-long}
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-secret-min-32-characters-long}
+      JWT_REFRESH_TTL: 12h
+      SESSION_IDLE_TIMEOUT_MINUTES: 30
+      SESSION_ABSOLUTE_TIMEOUT_HOURS: 12
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-strict}
+      ALLOWED_EMAIL_DOMAIN: anwargroup.net
+      TIMEZONE: Asia/Dhaka
+      MAIL_ENABLED: "true"
+      MAIL_TRANSPORT: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_SECURE: "false"
+      MAIL_FROM_NAME: ANWAR KPIFlow
+      MAIL_FROM_ADDRESS: no-reply@anwargroup.net
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_PATH: /app/storage/evidence
+      EXPORT_LOCAL_PATH: /app/storage/exports
+      EVIDENCE_ENCRYPT_AT_REST: "true"
+      EVIDENCE_ENCRYPTION_KEY: ${EVIDENCE_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      MALWARE_SCAN_ENABLED: "false"
+      RATE_LIMIT_API_PER_MIN: 300
+      RATE_LIMIT_LOGIN_PER_MIN: 10
+      RUN_MIGRATIONS: "true"
+      RUN_SEED: ${RUN_SEED:-true}
+      SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL:-superadmin@anwargroup.net}
+      SEED_SUPER_ADMIN_PASSWORD: ${SEED_SUPER_ADMIN_PASSWORD:-Anwar@KPI2026}
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-Anwar@KPI2026}
+    ports:
+      - "${API_PORT:-4100}:4000"
+    volumes:
+      - api_storage:/app/storage
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:4000/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 20s
+      timeout: 6s
+      retries: 10
+      start_period: 60s
+    networks: [anwar-kpi]
+
+  # ------------------------------------------------------------- Web (React + Nginx)
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+        VITE_APP_NAME: ANWAR KPIFlow
+    container_name: anwar-kpi-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-8090}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    networks: [anwar-kpi]
+
+volumes:
+  postgres_data:
+    name: anwar_kpi_postgres_data
+  redis_data:
+    name: anwar_kpi_redis_data
+  api_storage:
+    name: anwar_kpi_api_storage
+
+networks:
+  anwar-kpi:
+    name: anwar_kpi_network
+    driver: bridge
+
+

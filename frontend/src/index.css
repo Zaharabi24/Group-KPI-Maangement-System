@@ -1,0 +1,235 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================================
+   ANWAR KPIFlow — global styles (BRD §11.2, §11.6 accessibility)
+   ========================================================================= */
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    font-size: 14px;
+    line-height: 20px;
+    /* NFR-CMP-01: no horizontal page scroll from 360 to 1920 px */
+    overflow-x: hidden;
+  }
+
+  /* Numbers use tabular figures; formulas use JetBrains Mono (§11.2) */
+  .tnum,
+  table td,
+  table th {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  :focus-visible {
+    outline: 2px solid #1F6FB2;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: #C9D6E4;
+    color: #0B2545;
+  }
+
+  /* Scrollbars: subtle, enterprise */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #C9D6E4 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #C9D6E4;
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #9FB6CD;
+    background-clip: content-box;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* ---------------------------------------------------------------- surfaces */
+  .anwar-card {
+    @apply rounded-card border border-edge bg-surface shadow-card;
+  }
+
+  .anwar-card-pad {
+    @apply p-4 sm:p-6;
+  }
+
+  .anwar-section-title {
+    @apply text-h3 text-navy-900;
+  }
+
+  .anwar-label {
+    @apply mb-1 block text-caption font-medium text-ink-secondary;
+  }
+
+  .anwar-helper {
+    @apply mt-1 text-caption text-ink-muted;
+  }
+
+  .anwar-error {
+    @apply mt-1 flex items-start gap-1 text-caption text-danger;
+  }
+
+  /* ------------------------------------------------------------------ inputs */
+  .anwar-input {
+    @apply h-10 w-full rounded-control border border-edge bg-surface px-3 text-body text-ink
+           placeholder:text-ink-muted/70
+           focus:border-navy-600 focus:outline-none focus:ring-2 focus:ring-navy-600/20
+           disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted;
+  }
+
+  .anwar-input-error {
+    @apply border-danger focus:border-danger focus:ring-danger/20;
+  }
+
+  select.anwar-input {
+    @apply appearance-none bg-no-repeat pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235B6770' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 10px center;
+  }
+
+  /* ----------------------------------------------------------------- buttons */
+  .anwar-btn {
+    @apply inline-flex h-10 select-none items-center justify-center gap-2 whitespace-nowrap rounded-control
+           px-4 text-body font-semibold transition-colors
+           disabled:cursor-not-allowed disabled:opacity-55;
+    /* WCAG: touch targets ≥ 44 px on touch devices (§11.6) */
+    min-height: 40px;
+  }
+
+  @media (pointer: coarse) {
+    .anwar-btn {
+      min-height: 44px;
+    }
+  }
+
+  .anwar-btn-primary {
+    @apply bg-navy-900 text-white hover:bg-navy-700 active:bg-navy-800;
+  }
+
+  .anwar-btn-secondary {
+    @apply border border-edge bg-surface text-navy-900 hover:bg-navy-50;
+  }
+
+  .anwar-btn-ghost {
+    @apply text-navy-700 hover:bg-navy-50;
+  }
+
+  .anwar-btn-danger {
+    @apply bg-danger text-white hover:bg-danger/90;
+  }
+
+  .anwar-btn-sm {
+    @apply h-8 px-3 text-caption;
+  }
+
+  .anwar-btn-icon {
+    @apply h-9 w-9 rounded-control p-0 text-ink-secondary hover:bg-navy-50 hover:text-navy-900;
+  }
+
+  /* ------------------------------------------------------------------ badges */
+  .anwar-badge {
+    @apply inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-caption font-semibold leading-5;
+  }
+
+  /* ---------------------------------------------------------------- skeletons */
+  .anwar-skeleton {
+    @apply relative overflow-hidden rounded-control bg-neutral-tint;
+  }
+  .anwar-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+
+  /* ------------------------------------------------------------------- tables */
+  .anwar-table {
+    @apply w-full border-collapse text-body;
+  }
+  .anwar-table thead th {
+    @apply sticky top-0 z-10 whitespace-nowrap border-b border-edge bg-canvas px-3 py-2 text-left
+           text-caption font-semibold uppercase tracking-wide text-ink-secondary;
+  }
+  .anwar-table tbody td {
+    @apply border-b border-edge/70 px-3 py-2 align-middle;
+  }
+  .anwar-table tbody tr:hover {
+    @apply bg-navy-50/60;
+  }
+
+  /* ------------------------------------------------------------------- mono */
+  .anwar-mono {
+    @apply font-mono text-[13px];
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* --------------------------------------------------------------- scroll box */
+  .anwar-scroll {
+    @apply overflow-y-auto overscroll-contain;
+  }
+
+  /* ------------------------------------------------------------ kpi stepper */
+  .anwar-stepper-dot {
+    @apply flex h-6 w-6 items-center justify-center rounded-full border text-caption font-semibold;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .glass-topbar {
+    backdrop-filter: saturate(180%) blur(8px);
+  }
+  /* Freeze the first column of wide tables on small screens (§11.6) */
+  .sticky-first-col td:first-child,
+  .sticky-first-col th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    background: #fff;
+  }
+  .sticky-first-col thead th:first-child {
+    background: #F5F7FA;
+  }
+}
